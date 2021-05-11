@@ -1,0 +1,101 @@
+#!/usr/bin/bash
+
+function show_help() {
+    echo "Usage:"
+    echo -e "\tsrc_to_make [-h] [-p path] [-t size] [-s rule] [-o rule] [-m path]"
+    echo "Description:"
+    echo -e "\t-h\t\tPrint this help"
+    echo -e "\t-p path\t\tSource files path relative to Makefile path (Default : src/)"
+    echo -e "\t-t size\t\tTab size (Default : 8)"
+    echo -e "\t-s rule\t\tRule to use instead of src (Default : SRC)"
+    echo -e "\t-o rule\t\tRule next to src (Default : OBJ)"
+    echo -e "\t-m path\t\tDir with the makefile and source files (Default : ./)\n"
+    echo "https://github.com/YamiTheNeko/src_to_make"
+}
+
+parse_path="src";
+tab_size=8;
+src_rule="SRC";
+obj_rule="OBJ";
+
+while getopts "h?t:p:s:o:m:" opt; do
+    case "$opt" in
+        h|\?)
+            show_help
+            exit 0
+            ;;
+	t)  tab_size=$OPTARG
+            ;;
+	p)  parse_path=$OPTARG
+            ;;
+    s)  src_rule=$OPTARG
+            ;;
+    o)  obj_rule=$OPTARG
+            ;;
+    m)  cd $OPTARG
+            ;;
+    esac
+done
+
+if [ ! -f "Makefile" ]
+then
+    echo "Makefile not found. Choose a dir with a makefile.";
+    exit 84;
+fi
+
+if [ ! -d $parse_path ]
+then
+    echo "${parse_path} not found."
+    exit 84;
+fi
+
+src=$(find ${parse_path} -type f -name "*.c" | sed -e "s/^\.\///g" | awk '{print length,$0}' | sort -n -s -r | sed '/main.c/d')
+
+mf_lines=$(cat -n Makefile)
+mf=$(cat Makefile)
+
+obj_line=$(echo "$mf_lines" | grep ${obj_rule} | head -n 1 | cut -d${obj_rule:0:1} -f 1 | tr -dc '[:digit:]')
+obj_line=$((obj_line - 1))
+src_line=$(echo "$mf_lines" | grep ${src_rule} | head -n 1 | cut -d${src_rule:0:1} -f 1 | tr -dc '[:digit:]')
+src_line=$((src_line + 2 - 2))
+
+if [[ $obj_line == -1 ]]
+then
+    echo "Invalid makefile. Rule ${obj_rule} not found."
+    exit 84;
+fi
+if [[ -z $src_line ]]
+then
+    echo "Invalid makefile. Rule ${src_rule} not found."
+    exit 84;
+fi
+if [[ $src_line > $obj_line ]]
+then
+    echo "Invalid makefile. Rule ${obj_rule} is not next to ${src_rule}."
+    exit 84;
+fi
+
+nosrc=$(echo "$mf" | sed "${src_line},${obj_line}d")
+longest=$(echo "${src}" | cut -d" " -f1 | head -n 1)
+last=$(echo "${src}" | cut -d" " -f2- | tail -n 1)
+out=""
+
+while read src; do
+    out+="\t\t$(echo "${src}" | cut -d" " -f2-)";
+    lsize=$(echo "${src}" | cut -d" " -f1)
+    tabs=$((((($longest + $(($tab_size - 1))) & $((-1 * tab_size))) - $lsize + $(($tab_size - 1))) / $tab_size))
+    while [ $tabs -gt 0 ]; do
+        out+="\t";
+        tabs=$(($tabs-1))
+    done
+    out="${out}\\\\\n"
+done < <(echo "$src" | sed '$d')
+
+out+="\t\t$last"
+out="${src_rule}\t=${out:2}"
+echo "$(echo "$nosrc" | sed -n "1,$((obj_line - (obj_line - src_line + 1)))p")" > Makefile
+echo "" >> Makefile
+echo -e "$out" >> Makefile
+echo "$(echo "$nosrc" | sed -n "$((obj_line - (obj_line - src_line + 1))),\$p")" >> Makefile
+
+echo "$(echo -e ${out} | wc -l) file(s) found and added to Makefile."
