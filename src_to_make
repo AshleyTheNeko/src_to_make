@@ -1,24 +1,26 @@
 #!/usr/bin/bash
 
 function show_help() {
-    echo "Usage:"
-    echo -e "\tsrc_to_make [-h] [-p path] [-t size] [-s rule] [-o rule] [-m path]"
-    echo "Description:"
+    echo -e "SRC to MAKE : Help\n"
+    echo "This script helps you formatting your makefile's source rule."
+    echo "It uses a SRC rule, and the one next to it, you can provide these rules."
+    echo "There should be an empty line between src and the following rule."
+    echo "Here are the arguments you can pass to modify the behaviour:"
     echo -e "\t-h\t\tPrint this help"
-    echo -e "\t-p path\t\tSource files path relative to Makefile path (Default : src/)"
-    echo -e "\t-t size\t\tTab size (Default : 8)"
-    echo -e "\t-s rule\t\tRule to use instead of src (Default : SRC)"
-    echo -e "\t-o rule\t\tRule next to src (Default : OBJ)"
-    echo -e "\t-m path\t\tDir with the makefile and source files (Default : ./)\n"
-    echo "https://github.com/YamiTheNeko/src_to_make"
+    echo -e "\t-p <path>\tSource files path relative to Makefile path (Default : src/)"
+    echo -e "\t-t <size>\tTab size (Default : 8)"
+    echo -e "\t-s <rule>\tRule to use instead of src (Default : SRC)"
+    echo -e "\t-o <rule>\tRule next to src (Default : OBJ)"
+    echo -e "\t-m <path>\tWhere to find the makefile and source files (Default : ./)"
 }
 
 parse_path="src";
 tab_size=8;
 src_rule="SRC";
 obj_rule="OBJ";
+file_ext="c";
 
-while getopts "h?t:p:s:o:m:" opt; do
+while getopts "h?t:p:s:o:e:" opt; do
     case "$opt" in
         h|\?)
             show_help
@@ -28,18 +30,18 @@ while getopts "h?t:p:s:o:m:" opt; do
             ;;
 	p)  parse_path=$OPTARG
             ;;
-    s)  src_rule=$OPTARG
+        s)  src_rule=$OPTARG
             ;;
-    o)  obj_rule=$OPTARG
+        o)  obj_rule=$OPTARG
             ;;
-    m)  cd $OPTARG
-            ;;
+	e)  file_ext=$OPTARG
+	    ;;
     esac
 done
 
 if [ ! -f "Makefile" ]
 then
-    echo "Makefile not found. Choose a dir with a makefile.";
+    echo "Makefile not found. Exec in a dir with a makefile.";
     exit 84;
 fi
 
@@ -49,7 +51,7 @@ then
     exit 84;
 fi
 
-src=$(find ${parse_path} -type f -name "*.c" | sed -e "s/^\.\///g" | awk '{print length,$0}' | sort -n -s -r | sed '/main.c/d')
+src=$(find ${parse_path} -type f -name "*.${file_ext}" | sed -e "s/^\.\///g" | awk '{print length,$0}' | sort -n -s -r | sed "/main.${file_ext}/d")
 
 mf_lines=$(cat -n Makefile)
 mf=$(cat Makefile)
