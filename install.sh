@@ -5,4 +5,4 @@ then
     sudo rm -f /bin/src_to_make
 fi
 
-sudo mv src_to_make /bin
+sudo cp src_to_make /bin
