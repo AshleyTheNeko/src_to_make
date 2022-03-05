@@ -110,8 +110,15 @@ last_line=$(echo "${src}" | cut -d" " -f 2- | tail -n 1)
 
 out=""
 
+start_tabs_count=$(((3 + $tab_size) / $tab_size))
+start_tabs=""
+for i in $(seq 0 1 $start_tabs_count)
+do
+    start_tabs+="\t"
+done
+
 while read src; do
-    out+="\t\t$(echo "${src}" | cut -d" " -f2-)";
+    out+="$start_tabs$(echo "${src}" | cut -d" " -f2-)";
     line_size=$(echo "${src}" | cut -d" " -f1)
     tabs_number=$(((($longest_line - ($line_size / $tab_size * $tab_size)) / $tab_size) + 1))
     for i in $(seq 1 1 $tabs_number)
@@ -123,8 +130,8 @@ done < <(echo "$src" | sed '$d')
 
 makefile_lines=$(cat Makefile)
 
-out+="\t\t$last_line"
-out="${src_rule}\t=${out:2}"
+out+="$start_tabs$last_line"
+out="${src_rule}\t=\t${out:$(($start_tabs_count * 2 + 2))}"
 echo "$(echo "$makefile_lines" | sed -e "$src_line,\$d")" > Makefile
 echo "" >> Makefile
 echo -e "$out" >> Makefile
