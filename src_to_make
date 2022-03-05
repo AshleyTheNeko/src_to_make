@@ -26,7 +26,7 @@ obj_rule="OBJ";
 file_ext="c";
 leave_main=false
 
-while getopts "h?t:p:s:o:e:l" opt; do
+while getopts "h?t:p:s:m:o:e:l" opt; do
     case "$opt" in
         h|\?)
             show_help
@@ -36,7 +36,7 @@ while getopts "h?t:p:s:o:e:l" opt; do
         ;;
         l)  leave_main=true
         ;;
-        p)  parse_change+=" $OPTARG "
+        p)  parse_change+="$OPTARG "
         ;;
         s)  src_rule=$OPTARG
         ;;
@@ -72,7 +72,7 @@ done
 src=""
 for i in $parse_path
 do
-    src+="$(find ${i}/ -type f -name "*.${file_ext}" | sed -e "s/^\.\///g" | awk '{print length,$0}')"
+    src+="$(find ${i}/ -type f -name "*.${file_ext}" | sed -e "s/^\.\///g" | awk '{print length,$0}')\n"
 done
 
 if [ $leave_main == false ]
@@ -107,7 +107,6 @@ fi
 makefile_without_src=$(sed "${src_line},$((obj_line - 1))d" Makefile)
 longest_line=$(echo "${src}" | cut -d" " -f1 | head -n 1)
 last_line=$(echo "${src}" | cut -d" " -f 2- | tail -n 1)
-
 out=""
 
 start_tabs_count=$(((3 + $tab_size) / $tab_size))
@@ -130,7 +129,7 @@ done < <(echo "$src" | sed '$d')
 
 makefile_lines=$(cat Makefile)
 
-out+="$start_tabs$last_line"
+out+="${start_tabs}$last_line"
 out="${src_rule}\t=\t${out:$(($start_tabs_count * 2 + 2))}"
 echo "$(echo "$makefile_lines" | sed -e "$src_line,\$d")" > Makefile
 echo "" >> Makefile
