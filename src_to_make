@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+set -e
+
 function show_help() {
     echo -e "SRC to MAKE : Help\n"
     echo "This script helps you formatting your makefile's source rule."
@@ -7,37 +9,50 @@ function show_help() {
     echo "There should be an empty line between src and the following rule."
     echo "Here are the arguments you can pass to modify the behaviour:"
     echo -e "\t-h\t\tPrint this help"
-    echo -e "\t-p <path>\tSource files path relative to Makefile path (Default : src/)"
+    echo -e "\t-p <path>\tSource files path relative to Makefile path. Each call adds to the parse list (Default : src/)"
     echo -e "\t-t <size>\tTab size (Default : 8)"
     echo -e "\t-s <rule>\tRule to use instead of src (Default : SRC)"
     echo -e "\t-o <rule>\tRule next to src (Default : OBJ)"
     echo -e "\t-m <path>\tWhere to find the makefile and source files (Default : ./)"
+    echo -e "\t-e <extension>\tFile extension to find (Default: c)"
+    echo -e "\t-l\t\tLet main in src"
 }
 
 parse_path="src";
+parse_change="";
 tab_size=8;
 src_rule="SRC";
 obj_rule="OBJ";
 file_ext="c";
+leave_main=false
 
-while getopts "h?t:p:s:o:e:" opt; do
+while getopts "h?t:p:s:o:e:l" opt; do
     case "$opt" in
         h|\?)
             show_help
             exit 0
-            ;;
-	t)  tab_size=$OPTARG
-            ;;
-	p)  parse_path=$OPTARG
-            ;;
+        ;;
+        t)  tab_size=$OPTARG
+        ;;
+        l)  leave_main=true
+        ;;
+        p)  parse_change+=" $OPTARG "
+        ;;
         s)  src_rule=$OPTARG
-            ;;
+        ;;
         o)  obj_rule=$OPTARG
-            ;;
-	e)  file_ext=$OPTARG
-	    ;;
+        ;;
+        e)  file_ext=$OPTARG
+        ;;
+        m)  cd $OPTARG
+        ;;
     esac
 done
+
+if [ ! "$parse_change" == "" ]
+then
+    parse_path=$parse_change
+fi
 
 if [ ! -f "Makefile" ]
 then
@@ -45,59 +60,80 @@ then
     exit 84;
 fi
 
-if [ ! -d $parse_path ]
+for i in $parse_path
+do
+    if [ ! -d $i ]
+    then
+        echo "${i} not found."
+        exit 84;
+    fi
+done
+
+src=""
+for i in $parse_path
+do
+    src+="$(find ${i}/ -type f -name "*.${file_ext}" | sed -e "s/^\.\///g" | awk '{print length,$0}')"
+done
+
+if [ $leave_main == false ]
 then
-    echo "${parse_path} not found."
-    exit 84;
+    src=$(printf "$src" | sed "/main.${file_ext}/d")
 fi
 
-src=$(find ${parse_path} -type f -name "*.${file_ext}" | sed -e "s/^\.\///g" | awk '{print length,$0}' | sort -n -s -r | sed "/main.${file_ext}/d")
+src=$(printf "$src" | sort -n -s -r)
 
-mf_lines=$(cat -n Makefile)
-mf=$(cat Makefile)
+obj_line=$(grep ${obj_rule} --line-number Makefile | cut -d: -f 1 | head -n 1)
+src_line=$(grep ${src_rule} --line-number Makefile | cut -d: -f 1 | head -n 1)
 
-obj_line=$(echo "$mf_lines" | grep ${obj_rule} | head -n 1 | cut -d${obj_rule:0:1} -f 1 | tr -dc '[:digit:]')
-obj_line=$((obj_line - 1))
-src_line=$(echo "$mf_lines" | grep ${src_rule} | head -n 1 | cut -d${src_rule:0:1} -f 1 | tr -dc '[:digit:]')
-src_line=$((src_line + 2 - 2))
-
-if [[ $obj_line == -1 ]]
+if [[ "$obj_line" == "" ]]
 then
     echo "Invalid makefile. Rule ${obj_rule} not found."
     exit 84;
 fi
-if [[ -z $src_line ]]
+
+if [[ "$src_line" == "" ]]
 then
     echo "Invalid makefile. Rule ${src_rule} not found."
     exit 84;
 fi
-if [[ $src_line > $obj_line ]]
+
+if [[ $src_line -ge $obj_line ]]
 then
-    echo "Invalid makefile. Rule ${obj_rule} is not next to ${src_rule}."
+    echo "Invalid makefile. Rule ${obj_rule} is not next to ${src_rule}."\
+    "(OBJ is at line $obj_line and SRC is at line $src_line)";
     exit 84;
 fi
 
-nosrc=$(echo "$mf" | sed "${src_line},${obj_line}d")
-longest=$(echo "${src}" | cut -d" " -f1 | head -n 1)
-last=$(echo "${src}" | cut -d" " -f2- | tail -n 1)
+makefile_without_src=$(sed "${src_line},$((obj_line - 1))d" Makefile)
+longest_line=$(echo "${src}" | cut -d" " -f1 | head -n 1)
+last_line=$(echo "${src}" | cut -d" " -f 2- | tail -n 1)
+
 out=""
 
 while read src; do
     out+="\t\t$(echo "${src}" | cut -d" " -f2-)";
-    lsize=$(echo "${src}" | cut -d" " -f1)
-    tabs=$((((($longest + $(($tab_size - 1))) & $((-1 * tab_size))) - $lsize + $(($tab_size - 1))) / $tab_size))
-    while [ $tabs -gt 0 ]; do
+    line_size=$(echo "${src}" | cut -d" " -f1)
+    tabs_number=$(((($longest_line - ($line_size / $tab_size * $tab_size)) / $tab_size) + 1))
+    for i in $(seq 1 1 $tabs_number)
+    do
         out+="\t";
-        tabs=$(($tabs-1))
     done
     out="${out}\\\\\n"
 done < <(echo "$src" | sed '$d')
 
-out+="\t\t$last"
+makefile_lines=$(cat Makefile)
+
+out+="\t\t$last_line"
 out="${src_rule}\t=${out:2}"
-echo "$(echo "$nosrc" | sed -n "1,$((obj_line - (obj_line - src_line + 1)))p")" > Makefile
+echo "$(echo "$makefile_lines" | sed -e "$src_line,\$d")" > Makefile
 echo "" >> Makefile
 echo -e "$out" >> Makefile
-echo "$(echo "$nosrc" | sed -n "$((obj_line - (obj_line - src_line + 1))),\$p")" >> Makefile
+echo "" >> Makefile
+echo "$(echo "$makefile_lines" | sed -e "1,$(($obj_line - 1))d")" >> Makefile
 
-echo "$(echo -e ${out} | wc -l) file(s) found and added to Makefile."
+if [ "$out" == "${src_rule}\t=\t" ]
+then
+    echo "No files were added to Makefile. SRC rule cleared. Perhaps src is empty?"
+else
+    echo "$(echo -e $out | wc -l) file(s) found and added to Makefile."
+fi
